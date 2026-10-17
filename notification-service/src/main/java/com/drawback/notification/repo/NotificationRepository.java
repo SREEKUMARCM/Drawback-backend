@@ -24,10 +24,10 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     long countByRecipientIdAndReadAtIsNull(UUID recipientId);
 
     @Modifying
-    @Query("update Notification n set n.readAt = now() where n.id = :id and n.recipientId = :recipientId and n.readAt is null")
+    @Query("update Notification n set n.readAt = instant where n.id = :id and n.recipientId = :recipientId and n.readAt is null")
     int markRead(UUID id, UUID recipientId);
 
     @Modifying
-    @Query("update Notification n set n.readAt = now() where n.recipientId = :recipientId and n.readAt is null")
+    @Query("update Notification n set n.readAt = instant where n.recipientId = :recipientId and n.readAt is null")
     int markAllRead(UUID recipientId);
 }

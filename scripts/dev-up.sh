@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 ROOT=$PWD
 WEB="${1:-$ROOT/../drawback-web}"
 LOGS="$ROOT/.logs"; mkdir -p "$LOGS"
-export JWT_SECRET="${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}"
+export JWT_SECRET="${JWT_SECRET:-ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS0wMTIzNDU2Nzg5YWJjZGVm}"   # base64 of a dev-only string; JwtService needs base64, >= 32 bytes
 export OTP_DEV_LOG=true
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -47,9 +47,9 @@ say "4/6 Backend services"
 start auth-service         mvn -q -pl auth-service spring-boot:run
 start review-service       mvn -q -pl review-service spring-boot:run
 start notification-service mvn -q -pl notification-service spring-boot:run
-wait_http auth-service         http://localhost:8081/actuator/health
-wait_http review-service       http://localhost:8082/actuator/health
-wait_http notification-service http://localhost:8084/actuator/health
+wait_http auth-service         http://localhost:9081/actuator/health
+wait_http review-service       http://localhost:9082/actuator/health
+wait_http notification-service http://localhost:9084/actuator/health
 
 say "5/6 Frontend"
 [ -d "$WEB" ] || { echo "Frontend not found at $WEB - pass its path as the first argument"; exit 1; }

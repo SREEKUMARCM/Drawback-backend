@@ -18,6 +18,12 @@ spring:
       hibernate.jdbc.time_zone: UTC
       hibernate.jdbc.batch_size: 50
       hibernate.order_inserts: true
+  jackson:
+    default-property-inclusion: non_null   # the web app treats absent and null alike; omit nulls
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -51,10 +57,25 @@ drawback:
   security:
     public-paths:
       - /actuator/health/**
+      - /api/v1/media/files/**        # <img>/<video> cannot send a JWT; each URL carries an unguessable HMAC signature
+    public-read-paths:                 # GET only: guests may browse. Every write still needs a JWT.
+      - /api/v1/drawbacks/**
+      - /api/v1/trending
+      - /api/v1/explore
+      - /api/v1/community
+      - /api/v1/catalog/**
+      - /api/v1/social/users/*         # public profiles
     jwt:
       secret: ${JWT_SECRET}
       issuer: drawback-auth
+  media:
+    dir: ${MEDIA_DIR:./data/media}     # mount a persistent volume here (or replace MediaService with an object-store client)
+    max-bytes: 26214400
   review:
+    auth-base-url: ${AUTH_BASE_URL:http://localhost:8081}   # used for moderator "suspend author" decisions
+    snapshot:
+      refresh-minutes: 10
+      deadline-ms: 400
     author-timeout-ms: 400
     user-check:
       fail-open: true

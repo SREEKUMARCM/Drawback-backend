@@ -12,7 +12,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -59,11 +58,6 @@ public class AuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logoutAll(@AuthenticationPrincipal AuthenticatedUser caller) {
         auth.logoutEverywhere(caller);
-    }
-
-    @GetMapping("/me")
-    public UserResponse me(@AuthenticationPrincipal AuthenticatedUser caller) {
-        return auth.me(caller.userId());
     }
 
     /** Behind a trusted gateway/ingress, configure server.forward-headers-strategy=native so this is the real client IP. */

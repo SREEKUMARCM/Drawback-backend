@@ -1,6 +1,7 @@
 package com.drawback.review.client;
 
 import com.drawback.grpc.BearerTokenCredentials;
+import com.drawback.grpc.user.GetUserByUsernameRequest;
 import com.drawback.grpc.user.GetUserRequest;
 import com.drawback.grpc.user.UserDirectoryGrpc;
 import com.drawback.grpc.user.UserProfile;
@@ -48,6 +49,19 @@ public class UserDirectoryClient {
         } catch (StatusRuntimeException e) {
             if (e.getStatus().getCode() == Status.Code.NOT_FOUND) return new Lookup(Outcome.NOT_FOUND, null);
             log.warn("auth-service lookup failed: {}", e.getStatus());
+            return new Lookup(Outcome.UNAVAILABLE, null);
+        }
+    }
+
+    public Lookup findByUsername(String username, String bearerToken, long deadlineMillis) {
+        try {
+            UserProfile p = stub.withCallCredentials(new BearerTokenCredentials(bearerToken))
+                    .withDeadlineAfter(deadlineMillis, TimeUnit.MILLISECONDS)
+                    .getUserByUsername(GetUserByUsernameRequest.newBuilder().setUsername(username).build());
+            return new Lookup(Outcome.FOUND, p);
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode() == Status.Code.NOT_FOUND) return new Lookup(Outcome.NOT_FOUND, null);
+            log.warn("auth-service lookup by username failed: {}", e.getStatus());
             return new Lookup(Outcome.UNAVAILABLE, null);
         }
     }

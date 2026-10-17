@@ -4,6 +4,7 @@ import com.drawback.auth.domain.UserAccount;
 import com.drawback.auth.domain.UserStats;
 import com.drawback.auth.repo.UserRepository;
 import com.drawback.auth.repo.UserStatsRepository;
+import com.drawback.grpc.user.GetUserByUsernameRequest;
 import com.drawback.grpc.user.GetUserRequest;
 import com.drawback.grpc.user.GetUsersRequest;
 import com.drawback.grpc.user.GetUsersResponse;
@@ -82,6 +83,19 @@ public class UserDirectoryGrpcService extends UserDirectoryGrpc.UserDirectoryImp
         out.onCompleted();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public void getUserByUsername(GetUserByUsernameRequest request, StreamObserver<UserProfile> out) {
+        var user = users.findByUsername(request.getUsername());
+        if (user.isEmpty()) {
+            out.onError(Status.NOT_FOUND.withDescription("user not found").asRuntimeException());
+            return;
+        }
+        long count = stats.findById(user.get().getId()).map(UserStats::getReviewCount).orElse(0L);
+        out.onNext(toProto(user.get(), count));
+        out.onCompleted();
+    }
+
     private static UserProfile toProto(UserAccount u, long reviewCount) {
         return UserProfile.newBuilder()
                 .setId(u.getId().toString())
@@ -91,6 +105,12 @@ public class UserDirectoryGrpcService extends UserDirectoryGrpc.UserDirectoryImp
                 .setStatus(u.isActive() ? UserStatus.ACTIVE : UserStatus.SUSPENDED)
                 .setReviewCount(reviewCount)
                 .addAllRoles(u.getRoles().stream().map(Role::name).sorted().toList())
+                .setAvatarUrl(u.getAvatarUrl() == null ? "" : u.getAvatarUrl())
+                .setBio(u.getBio())
+                .setLocation(u.getLocation() == null ? "" : u.getLocation())
+                .addAllInterests(u.getInterests())
+                .setJoinedAtEpochMs(u.getCreatedAt().toEpochMilli())
+                .setOnboarded(u.isOnboarded())
                 .build();
     }
 }

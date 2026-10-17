@@ -49,6 +49,7 @@ services:
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP: kafka:9092
       SERVER_PORT: 8080
+      OTP_DEV_LOG: ${OTP_DEV_LOG:-true}   # dev only: prints phone OTPs to the auth-service log. Set false and wire a real SmsSender in production.
     ports: ["8081:8080"]
 
   review-service:
@@ -58,6 +59,9 @@ services:
       <<: *common
       DB_URL: jdbc:postgresql://postgres:5432/review_db
       AUTH_GRPC_ADDRESS: static://auth-service:9091
+      AUTH_BASE_URL: http://auth-service:8080
+      MEDIA_DIR: /data/media
+    volumes: ["media:/data/media"]
     ports: ["8082:8080"]
 
   search-service:
@@ -76,4 +80,4 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/notification_db
     ports: ["8084:8080"]
 
-volumes: { pg: {}, solr: {} }
+volumes: { pg: {}, solr: {}, media: {} }

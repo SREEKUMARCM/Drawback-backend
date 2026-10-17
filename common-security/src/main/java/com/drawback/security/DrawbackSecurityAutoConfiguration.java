@@ -75,6 +75,7 @@ public class DrawbackSecurityAutoConfiguration {
         // The filter is created here (not exposed as a @Bean) so Boot does not also register it as a servlet filter.
         var jwtFilter = new JwtAuthenticationFilter(jwtService, blacklist);
         String[] publicPaths = paths.publicPaths().toArray(String[]::new);
+        String[] publicReadPaths = paths.publicReadPaths().toArray(String[]::new);
 
         http
             .csrf(AbstractHttpConfigurer::disable)              // stateless + bearer header => no ambient cookie credentials
@@ -89,10 +90,13 @@ public class DrawbackSecurityAutoConfiguration {
                 .frameOptions(f -> f.deny())
                 .httpStrictTransportSecurity(s -> s.includeSubDomains(true).maxAgeInSeconds(31_536_000))
                 .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER)))
-            .authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // CORS pre-flight carries no credentials
-                .requestMatchers(publicPaths).permitAll()
-                .anyRequest().authenticated())                  // <- every other call needs a valid JWT
+            .authorizeHttpRequests(a -> {
+                a.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll(); // CORS pre-flight carries no credentials
+                a.requestMatchers(publicPaths).permitAll();
+                // An empty pattern list would match EVERY GET request, so only register it when it is non-empty.
+                if (publicReadPaths.length > 0) a.requestMatchers(HttpMethod.GET, publicReadPaths).permitAll();
+                a.anyRequest().authenticated();                 // <- every other call needs a valid JWT
+            })
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

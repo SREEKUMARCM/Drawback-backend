@@ -50,6 +50,26 @@ bootstrap the first admin with SQL: `insert into user_roles values ('<id>','ADMI
 | search | `GET /api/v1/search?q=` · `GET /api/v1/search/reviews?q&category&minRating&sort&page&size` · `GET /api/v1/search/suggest?q=` |
 | notification | `GET /api/v1/notifications` · `POST /api/v1/notifications/{id}/read` · `POST /api/v1/notifications/read-all` |
 
+## Drawback web app support
+review-service now owns the drawback domain used by the `drawback-web` frontend (flyway `V2__drawbacks.sql`): drawbacks with attachments,
+0–100% votes with mandatory comments, replies, saves, follows, user settings, reports and the moderation queue, and evidence media.
+Community Agreement Score = sum of percentages ÷ votes, kept as atomic aggregates (`vote_count`, `vote_sum`, `dist0..4`) so edits and
+concurrent votes stay consistent. Events go through the outbox to `drawback.drawbacks.v1`; notification-service turns them into notifications.
+
+| Area | Endpoints (all `/api/v1`) |
+|---|---|
+| auth-service | `POST /auth/register · /login · /refresh · /logout` · `GET/PUT/DELETE /auth/me` · `GET /auth/username-available` · `POST /auth/phone/otp · /phone/verify` |
+| review-service | `/drawbacks[/{id}[/votes\|/save]]` · `/votes/{id}/replies` · `/trending` · `/explore` · `/community` · `/catalog/subjects[/{slug}]` · `/reports` · `/social/{users/{u}[/follow],follows,saved,settings,export,me}` · `/admin/{stats,cases,cases/{id}[/decision]}` (MODERATOR+) · `/media` |
+
+Notes:
+- **Guest browsing**: GET-only `drawback.security.public-read-paths` (feed, drawback pages, catalog, profiles). Writes always need a JWT; the JWT filter still runs on these paths so signed-in callers are recognised.
+- **Media**: uploads need a JWT; file URLs are public but carry an HMAC signature (`<img>`/`<video>` cannot send headers). Stored under `MEDIA_DIR` – mount a persistent volume.
+- **Phone verification**: OTP + number are stored hashed (peppered); limits: 5-min code, 30 s resend, 5 SMS/hour, 5 guesses. `OTP_DEV_LOG=true` logs codes (dev only). Production must provide a real `SmsSender` bean.
+- **Author names** on public pages come from a local `user_snapshot` read model refreshed over gRPC (`GetUser`, `GetUserByUsername`), so browsing needs no gRPC call.
+- Fixed: `subject.version` column was missing from the review schema.
+- Limitations: drawbacks are not in Solr (feed search is `ILIKE`); admin user counts are approximated from the snapshot; account deletion is two calls (auth anonymise, then review purge); feed paging is limit/offset.
+- **Not yet compiled in the authoring sandbox** – run `mvn verify` first and fix anything it reports.
+
 ## Tests
 `mvn test` — unit tests (JwtService, filter, full security chain via MockMvc, AuthService, ReviewCommandService, parallel
 detail aggregation, outbox ordering, Solr indexer/query building, notification idempotency).

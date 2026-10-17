@@ -2,6 +2,7 @@ package com.drawback.auth.service;
 
 import com.drawback.auth.domain.UserAccount;
 import com.drawback.auth.repo.UserRepository;
+import com.drawback.auth.web.AuthDtos.AccessTokenResponse;
 import com.drawback.auth.web.AuthDtos.LoginRequest;
 import com.drawback.auth.web.AuthDtos.RegisterRequest;
 import com.drawback.auth.web.AuthDtos.TokenResponse;
@@ -126,6 +127,20 @@ public class AuthService {
         user.setStatus(suspended ? UserAccount.Status.SUSPENDED : UserAccount.Status.ACTIVE);
         if (suspended) refreshTokens.revokeAll(userId); // no new access tokens; existing ones lapse within accessTtl
         return UserResponse.of(user);
+    }
+
+    /**
+     * New access token carrying the account's CURRENT claims (e.g. after phone verification flipped {@code verified}).
+     * The caller's refresh token stays valid; the access token that was replaced is revoked immediately.
+     */
+    @Transactional(readOnly = true)
+    public AccessTokenResponse reissueAccessToken(AuthenticatedUser caller) {
+        UserAccount user = users.findById(caller.userId()).orElseThrow(() -> ApiException.unauthorized("Unknown user"));
+        if (!user.isActive()) throw ApiException.forbidden("Account suspended");
+        var access = jwt.issueAccessToken(user.getId(), user.getUsername(), user.getRoles(), user.isVerified());
+        blacklist.revoke(caller.tokenId(), caller.expiresAt());
+        long expiresIn = java.time.Duration.between(java.time.Instant.now(), access.expiresAt()).toSeconds();
+        return new AccessTokenResponse(access.value(), "Bearer", expiresIn);
     }
 
     private TokenResponse issueTokens(UserAccount user) {

@@ -7,6 +7,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -36,4 +38,42 @@ public final class AuthDtos {
                     u.isVerified(), u.getRoles(), u.getStatus().name());
         }
     }
+
+    // ---- profile & phone verification (used by the Drawback web app) ----------------------------------------------
+
+    /** Everything the signed-in user may see about their own account. The phone number is only ever returned masked. */
+    public record MeResponse(UUID id, String username, String email, String displayName, boolean verified,
+                             Set<Role> roles, String status, String bio, String location, List<String> interests,
+                             String avatarUrl, boolean onboarded, String phoneMasked, Instant createdAt) {
+        public static MeResponse of(UserAccount u) {
+            return new MeResponse(u.getId(), u.getUsername(), u.getEmail(), u.getDisplayName(), u.isVerified(),
+                    u.getRoles(), u.getStatus().name(), u.getBio(), u.getLocation(), u.getInterests(),
+                    u.getAvatarUrl(), u.isOnboarded(), u.getPhoneMasked(), u.getCreatedAt());
+        }
+    }
+
+    /** Partial update: null fields are left unchanged. */
+    public record UpdateProfileRequest(
+            @Pattern(regexp = "^[A-Za-z0-9_]{3,30}$", message = "3-30 letters, digits or underscores") String username,
+            @Size(min = 2, max = 80) String displayName,
+            @Size(max = 160) String bio,
+            @Size(max = 60) String location,
+            @Size(max = 20) List<@Pattern(regexp = "^[a-z0-9-]{1,40}$") String> interests,
+            @Size(max = 500) String avatarUrl,
+            Boolean onboarded) {}
+
+    public record UsernameAvailability(boolean available) {}
+
+    public record PhoneOtpRequest(@NotBlank @Pattern(regexp = "^\\+?[0-9 ()-]{8,20}$", message = "Enter a valid phone number") String phone) {}
+
+    public record PhoneOtpResponse(long expiresIn, long resendIn) {}
+
+    public record PhoneVerifyRequest(
+            @NotBlank @Pattern(regexp = "^\\+?[0-9 ()-]{8,20}$", message = "Enter a valid phone number") String phone,
+            @NotBlank @Pattern(regexp = "^[0-9]{6}$", message = "Enter the 6-digit code") String code) {}
+
+    /** Verification changes the {@code verified} claim, so a fresh access token is returned together with the profile. */
+    public record PhoneVerifyResponse(AccessTokenResponse token, MeResponse user) {}
+
+    public record AccessTokenResponse(String accessToken, String tokenType, long expiresIn) {}
 }

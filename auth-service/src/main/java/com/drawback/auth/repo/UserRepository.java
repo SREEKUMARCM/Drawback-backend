@@ -20,4 +20,10 @@ public interface UserRepository extends JpaRepository<UserAccount, UUID> {
     boolean emailTaken(String email);
 
     List<UserAccount> findAllByIdIn(Collection<UUID> ids);
+
+    @Query("select u from UserAccount u where lower(u.username) = lower(:username)")
+    Optional<UserAccount> findByUsername(String username);
+
+    @Query("select u from UserAccount u where u.phoneHash = :phoneHash")
+    Optional<UserAccount> findByPhoneHash(String phoneHash);
 }

@@ -1,5 +1,6 @@
 package com.drawback.notification.service;
 
+import com.drawback.events.DrawbackEvent;
 import com.drawback.events.ReviewEvent;
 import com.drawback.notification.domain.Notification;
 import com.drawback.notification.repo.NotificationRepository;
@@ -40,6 +41,33 @@ public class NotificationService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() {
                 dispatcher.dispatch(e.subjectOwnerId(), title, message, link);
+            }
+        });
+        return true;
+    }
+
+    /** Somebody voted on, or replied under, the recipient's content. Safe to call twice for the same event. */
+    @Transactional
+    public boolean onDrawbackEvent(DrawbackEvent e) {
+        if (e.recipientId().equals(e.actorId())) return false;
+        String headline = abbreviate(e.headline(), 80);
+        String title;
+        String message;
+        if (e.type() == DrawbackEvent.Type.VOTE_CREATED) {
+            title = "New vote on your drawback";
+            message = "@" + e.actorName() + " voted " + e.percent() + "% on your drawback “" + headline + "”: " + abbreviate(e.excerpt(), 240);
+        } else {
+            title = "New reply to your comment";
+            message = "@" + e.actorName() + " replied to your comment on “" + headline + "”: " + abbreviate(e.excerpt(), 240);
+        }
+        String link = "/drawback/" + e.drawbackId();
+
+        int inserted = repo.insertIfAbsent(UUID.randomUUID(), e.eventId(), e.recipientId(), e.type().name(), title, abbreviate(message, 490), link);
+        if (inserted == 0) return false; // redelivery
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                dispatcher.dispatch(e.recipientId(), title, message, link);
             }
         });
         return true;

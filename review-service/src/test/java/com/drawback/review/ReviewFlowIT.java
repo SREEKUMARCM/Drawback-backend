@@ -52,7 +52,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
 
 /** End to end against real PostgreSQL, Redis and Kafka (needs Docker): HTTP -> DB -> outbox -> Kafka. */
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(properties = {
         "drawback.security.jwt.secret=ZHJhd2JhY2stdGVzdC1zZWNyZXQtMDEyMzQ1Njc4OS1hYmNkZWY=",
         "drawback.outbox.poll-ms=200"

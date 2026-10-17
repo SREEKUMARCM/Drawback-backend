@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package drawback.user.v1;
+
+option java_multiple_files = true;
+option java_package = "com.drawback.grpc.user";
+option java_outer_classname = "UserDirectoryProto";
+
+// Read-only user lookup exposed by auth-service to the other services.
+// Callers must send the end user's JWT in the "authorization" metadata (Bearer ...).
+service UserDirectory {
+  rpc GetUser (GetUserRequest) returns (UserProfile);
+  rpc GetUsers (GetUsersRequest) returns (GetUsersResponse);
+}
+
+message GetUserRequest { string user_id = 1; }
+message GetUsersRequest { repeated string user_ids = 1; }   // max 100
+message GetUsersResponse { repeated UserProfile users = 1; }
+
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  SUSPENDED = 2;
+}
+
+message UserProfile {
+  string id = 1;
+  string username = 2;
+  string display_name = 3;
+  bool verified = 4;
+  UserStatus status = 5;
+  int64 review_count = 6;
+  repeated string roles = 7;
+}

@@ -1,0 +1,79 @@
+# Production-shaped manifest for one service (copy per service; values via Kustomize/Helm in a real repo).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: review-service
+  labels: { app: review-service }
+spec:
+  replicas: 3
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app: review-service } }
+  template:
+    metadata:
+      labels: { app: review-service }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9082", prometheus.io/path: /actuator/prometheus }
+    spec:
+      terminationGracePeriodSeconds: 45          # > spring graceful-shutdown (30s) so in-flight requests finish
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: review-service } } }
+      containers:
+        - name: app
+          image: registry.example.com/drawback/review-service:1.0.0     # pin by digest in production
+          ports: [{ name: http, containerPort: 8080 }, { name: mgmt, containerPort: 9082 }]
+          env:
+            - { name: SERVER_PORT, value: "8080" }
+            - { name: DB_URL, value: "jdbc:postgresql://pg-review.internal:5432/review_db" }
+            - { name: KAFKA_BOOTSTRAP, value: "kafka-0.kafka:9092,kafka-1.kafka:9092,kafka-2.kafka:9092" }
+            - { name: REDIS_HOST, value: "redis-master.cache" }
+            - { name: AUTH_GRPC_ADDRESS, value: "dns:///auth-service.default.svc:9091" }   # dns:/// => client-side load balancing across pods
+            - { name: JWT_SECRET, valueFrom: { secretKeyRef: { name: drawback-jwt, key: secret } } }
+            - { name: DB_USER, valueFrom: { secretKeyRef: { name: review-db, key: username } } }
+            - { name: DB_PASSWORD, valueFrom: { secretKeyRef: { name: review-db, key: password } } }
+          resources:
+            requests: { cpu: 500m, memory: 768Mi }
+            limits: { memory: 768Mi }              # memory limit == request; no CPU limit (avoids CFS throttling latency)
+          startupProbe:   { httpGet: { path: /actuator/health/liveness,  port: mgmt }, failureThreshold: 30, periodSeconds: 2 }
+          livenessProbe:  { httpGet: { path: /actuator/health/liveness,  port: mgmt }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: mgmt }, periodSeconds: 5 }
+          lifecycle: { preStop: { exec: { command: ["sh", "-c", "sleep 10"] } } }   # let the endpoint controller drain us first
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: review-service }
+spec:
+  selector: { app: review-service }
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: review-service }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: review-service }
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - { type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: review-service }
+spec:
+  minAvailable: 2
+  selector: { matchLabels: { app: review-service } }
+---
+# Only the gateway may reach the public port; Prometheus may reach the management port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: review-service }
+spec:
+  podSelector: { matchLabels: { app: review-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app: api-gateway } } }]
+      ports: [{ port: 8080 }]
+    - from: [{ namespaceSelector: { matchLabels: { name: monitoring } } }]
+      ports: [{ port: 9082 }]

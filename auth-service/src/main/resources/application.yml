@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: auth-service
+  threads:
+    virtual:
+      enabled: true            # Tomcat + @Async use virtual threads: cheap blocking I/O
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/auth_db}
+    username: ${DB_USER:drawback}
+    password: ${DB_PASSWORD:drawback}
+    hikari:
+      maximum-pool-size: ${DB_POOL:20}
+      connection-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate       # schema is owned by Flyway
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 500ms
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: com.drawback.events
+        spring.json.use.type.headers: false
+    listener:
+      ack-mode: record
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+
+server:
+  port: 8081
+  shutdown: graceful
+  forward-headers-strategy: native
+
+grpc:
+  server:
+    port: 9091
+
+drawback:
+  security:
+    public-paths:
+      - /actuator/health/**
+      - /api/v1/auth/register
+      - /api/v1/auth/login
+      - /api/v1/auth/refresh
+    jwt:
+      secret: ${JWT_SECRET}    # base64, >= 32 bytes; no default on purpose
+      issuer: drawback-auth
+
+management:
+  endpoints.web.exposure.include: health,info,prometheus
+  endpoint.health.probes.enabled: true
+  server.port: 9081            # scrape port: keep it off the public ingress / behind a NetworkPolicy

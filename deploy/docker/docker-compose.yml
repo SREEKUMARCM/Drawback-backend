@@ -1,0 +1,79 @@
+# Local development stack:  JWT_SECRET=$(openssl rand -base64 48) docker compose -f deploy/docker/docker-compose.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: drawback
+      POSTGRES_PASSWORD: drawback
+    volumes:
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U drawback"], interval: 5s, retries: 10 }
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
+    ports: ["6379:6379"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+
+  kafka:                                   # single-node KRaft (no ZooKeeper)
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NUM_PARTITIONS: 6
+    ports: ["9092:9092"]
+
+  solr:
+    image: solr:9.7
+    # two cores from the _default configset; search-service declares the fields through the Schema API on start-up
+    entrypoint: ["bash", "-c", "precreate-core reviews && precreate-core subjects && exec solr-foreground"]
+    ports: ["8983:8983"]
+    volumes: ["solr:/var/solr"]
+
+  auth-service:
+    build: { context: ../.., dockerfile: deploy/docker/Dockerfile, args: { MODULE: auth-service } }
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_healthy }, kafka: { condition: service_started } }
+    environment: &common
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      DB_URL: jdbc:postgresql://postgres:5432/auth_db
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP: kafka:9092
+      SERVER_PORT: 8080
+    ports: ["8081:8080"]
+
+  review-service:
+    build: { context: ../.., dockerfile: deploy/docker/Dockerfile, args: { MODULE: review-service } }
+    depends_on: [auth-service]
+    environment:
+      <<: *common
+      DB_URL: jdbc:postgresql://postgres:5432/review_db
+      AUTH_GRPC_ADDRESS: static://auth-service:9091
+    ports: ["8082:8080"]
+
+  search-service:
+    build: { context: ../.., dockerfile: deploy/docker/Dockerfile, args: { MODULE: search-service } }
+    depends_on: [solr]
+    environment:
+      <<: *common
+      SOLR_URL: http://solr:8983/solr
+    ports: ["8083:8080"]
+
+  notification-service:
+    build: { context: ../.., dockerfile: deploy/docker/Dockerfile, args: { MODULE: notification-service } }
+    depends_on: [kafka]
+    environment:
+      <<: *common
+      DB_URL: jdbc:postgresql://postgres:5432/notification_db
+    ports: ["8084:8080"]
+
+volumes: { pg: {}, solr: {} }
